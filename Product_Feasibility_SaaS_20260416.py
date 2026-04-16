@@ -167,7 +167,7 @@ def admin_settings_dialog():
     st.markdown("请前往 [Streamlit Cloud Secrets](https://share.streamlit.io/) 修改 `AI_API_KEY`、`AI_BASE_URL` 和 `AI_MODEL_NAME`，然后重启应用。")
 
 # ================== 右上角按钮 ==================
-col1, col2, col3, col4 = st.columns([8, 1, 1, 1])
+col1, col2, col3, col4 = st.columns([8, 2, 2, 1])
 with col2:
     if st.button("中文", key="zh_btn", type="primary"):
         st.session_state.lang = "zh"
