@@ -1,0 +1,7 @@
+streamlit>=1.33.0
+pandas
+numpy
+openai>=1.0.0
+python-docx
+stripe>=7.0.0
+openpyxl
