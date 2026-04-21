@@ -5,3 +5,4 @@ openai>=1.0.0
 python-docx
 stripe>=7.0.0
 openpyxl
+pyjwt>=2.8.0
