@@ -35,10 +35,17 @@ def verify_token(token):
         if payload["exp"] > time.time():
             return payload["email"]
         else:
+            st.error(f"Token expired at {payload['exp']}, now {time.time()}")
             return None
-    except Exception:
+    except jwt.InvalidSignatureError:
+        st.error("JWT signature invalid: JWT_SECRET_KEY mismatch")
         return None
-
+    except jwt.ExpiredSignatureError:
+        st.error("Token expired")
+        return None
+    except Exception as e:
+        st.error(f"Other JWT error: {type(e).__name__} - {e}")
+        return None
 # ========== 执行验证 ==========
 query_params = st.query_params
 token = query_params.get("token", None)
