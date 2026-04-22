@@ -27,8 +27,7 @@ def t(key):
     return TEXTS[st.session_state.language].get(key, key)
 
 # ========== JWT 验证配置 ==========
-JWT_SECRET = st.secrets.get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
-
+JWT_SECRET = st.secrets["connections"]["supabase"].get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
 def verify_token(token):
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
