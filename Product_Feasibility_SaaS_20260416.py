@@ -1,66 +1,93 @@
 import streamlit as st
+from supabase import create_client
 import jwt
 import time
 
-# ========== 语言配置（与门户保持一致） ==========
-if "language" not in st.session_state:
-    # 优先从 URL 参数获取语言，否则默认中文
+# ================== 页面配置 ==================
+st.set_page_config(page_title="产品可行性分析", layout="wide")
+
+# ================== 语言 ==================
+if "lang" not in st.session_state:
     lang_param = st.query_params.get("lang", "zh")
-    st.session_state.language = lang_param if lang_param in ["zh", "en"] else "zh"
+    st.session_state.lang = lang_param if lang_param in ["zh", "en"] else "zh"
 
-TEXTS = {
-    "zh": {
-        "no_token": "❌ 未检测到登录信息，请返回门户重新登录",
-        "token_expired": "⏰ 登录已过期，请返回门户重新登录",
-        "token_invalid": "🔐 无效的登录凭证，请返回门户重新登录",
-        "welcome": "✅ 欢迎 {}，您已成功登录",
-    },
-    "en": {
-        "no_token": "❌ No login information found. Please return to the portal and log in again.",
-        "token_expired": "⏰ Login expired. Please return to the portal and log in again.",
-        "token_invalid": "🔐 Invalid credentials. Please return to the portal and log in again.",
-        "welcome": "✅ Welcome {}, you are now logged in.",
-    }
-}
+def t(zh, en):
+    return zh if st.session_state.lang == "zh" else en
 
-def t(key):
-    return TEXTS[st.session_state.language].get(key, key)
+# ================== Supabase 客户端（使用 service_role 绕过 RLS） ==================
+def get_supabase():
+    url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
+    key = st.secrets["connections"]["supabase"]["SUPABASE_SERVICE_ROLE_KEY"]
+    return create_client(url, key)
 
-# ========== JWT 验证配置 ==========
-JWT_SECRET = st.secrets.get("JWT_SECRET_KEY", "fallback-secret-key-change-me")
-def verify_token(token):
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        if payload["exp"] > time.time():
-            return payload["email"]
-        else:
-            st.error(f"Token expired at {payload['exp']}, now {time.time()}")
-            return None
-    except jwt.InvalidSignatureError:
-        st.error("JWT signature invalid: JWT_SECRET_KEY mismatch")
-        return None
-    except jwt.ExpiredSignatureError:
-        st.error("Token expired")
-        return None
-    except Exception as e:
-        st.error(f"Other JWT error: {type(e).__name__} - {e}")
-        return None
-# ========== 执行验证 ==========
-query_params = st.query_params
-token = query_params.get("token", None)
+supabase = get_supabase()
 
-if token is None:
-    st.error(t("no_token"))
+# ================== JWT 验证 ==================
+JWT_SECRET = st.secrets["JWT_SECRET_KEY"]
+
+token = st.query_params.get("token")
+if not token:
+    st.error(t("未检测到登录信息，请返回门户重新登录", "No login info, please return to portal"))
     st.stop()
 
-email = verify_token(token)
-if email is None:
-    st.error(t("token_expired") if token else t("token_invalid"))
+try:
+    payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    if payload["exp"] < time.time():
+        st.error(t("登录已过期，请返回门户重新登录", "Login expired, please return to portal"))
+        st.stop()
+    email = payload["email"]
+    st.session_state.user_email = email
+    st.success(t(f"欢迎 {email}", f"Welcome {email}"))
+except Exception as e:
+    st.error(t("登录验证失败，请返回门户重新登录", "Authentication failed, please return to portal"))
     st.stop()
 
-# 验证通过，存储用户信息
-st.session_state.user_email = email
-st.success(t("welcome").format(email))
+# ================== 订阅检查 ==================
+def get_user_subscription():
+    result = supabase.table("user_authentication").select("*").eq("email", email).execute()
+    if result.data:
+        return result.data[0]
+    # 不存在则创建默认记录
+    default = {"email": email, "subscription_status": "free", "usage_count": 0, "usage_limit": 10}
+    supabase.table("user_authentication").insert(default).execute()
+    return default
+
+def can_use():
+    user = get_user_subscription()
+    if user["subscription_status"] == "active":
+        return True
+    if user["usage_count"] < user["usage_limit"]:
+        return True
+    st.warning(t("免费次数已用完（{}次），请升级订阅".format(user["usage_limit"]), 
+                "Free trial used up ({} times), please upgrade".format(user["usage_limit"])))
+    return False
+
+def increment_usage():
+    user = get_user_subscription()
+    if user["subscription_status"] == "active":
+        return
+    supabase.table("user_authentication").update(
+        {"usage_count": user["usage_count"] + 1}
+    ).eq("email", email).execute()
+
+# 检查是否可用
+if not can_use():
+    st.stop()
+
+# ================== 原有业务代码 ==================
+st.title(t("产品可行性分析系统", "Product Feasibility Analysis System"))
+
+# 这里放你原有的产品可行性分析代码
+# 例如：
+# product_name = st.text_input(t("产品名称", "Product Name"))
+# ...
+
+# 在分析成功后调用 increment_usage()
+# 例如：
+# if st.button(t("开始分析", "Analyze")):
+#     result = do_analysis(...)
+#     st.success(t("分析完成", "Analysis complete"))
+#     increment_usage()
 
 # ========== 然后继续你原有的工具代码 ==========
 # ... 原有逻辑
