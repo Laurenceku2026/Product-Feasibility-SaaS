@@ -26,12 +26,16 @@ query_params = st.query_params
 if "user_id" in query_params:
     st.session_state.user_id = query_params["user_id"]
     st.session_state.user_email = query_params.get("email", [""])[0]
+    # 从邮箱提取用户名（修复：取@前面的完整部分）
+    if st.session_state.user_email and "@" in st.session_state.user_email:
+        st.session_state.username = st.session_state.user_email.split('@')[0]
+    else:
+        st.session_state.username = "User"
+    # 设置语言（从门户传递）
     if "lang" in query_params:
         st.session_state.lang = query_params["lang"] if query_params["lang"] in ["zh", "en"] else "zh"
     else:
         st.session_state.lang = "zh"
-    if "trials_left" in query_params:
-        st.session_state.trials_left = int(query_params["trials_left"])
 else:
     st.warning("请从 TechLife Suite 门户登录后访问")
     st.stop()
@@ -48,7 +52,7 @@ supabase = init_supabase()
 
 def get_user_remaining_trials(user_id: str) -> int:
     if not supabase:
-        return st.session_state.get("trials_left", 30)
+        return 30
     try:
         response = supabase.table("profiles")\
             .select("free_trials_remaining, subscription_tier")\
@@ -61,7 +65,7 @@ def get_user_remaining_trials(user_id: str) -> int:
             return profile.get("free_trials_remaining", 30)
     except Exception:
         pass
-    return st.session_state.get("trials_left", 30)
+    return 30
 
 def consume_trial(user_id: str, app_name: str) -> tuple:
     if not supabase:
@@ -95,31 +99,22 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
 
 # ================== 侧边栏（显示用户信息和剩余次数） ==================
 with st.sidebar:
-    st.markdown("### 👤 用户信息")
-    st.markdown(f"**{st.session_state.user_email}**")
+    st.markdown(f"### 👤 {st.session_state.username}")
     remaining = get_user_remaining_trials(st.session_state.user_id)
     if remaining == -1:
         st.info("🎫 剩余免费次数: ∞ (专业版)")
     else:
         st.info(f"🎫 剩余免费次数: {remaining}")
-    lang_display = "中文" if st.session_state.lang == "zh" else "English"
-    st.caption(f"🌐 语言: {lang_display}")
     st.markdown("---")
-
-# ================== 语言切换按钮（使用不同的 key）==================
-col1, col2, col3 = st.columns([8, 1, 1])
-with col2:
-    if st.button("中文", key="subapp_zh_btn"):
-        st.session_state.lang = "zh"
-        st.rerun()
-with col3:
-    if st.button("English", key="subapp_en_btn"):
-        st.session_state.lang = "en"
-        st.rerun()
+    # 这里是原有的侧边栏内容
+    # ... 保留原有代码 ...
 
 # ================== 管理员凭证 ==================
 ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
+
+# ... 以下保持原有代码不变 ...
+# 注意：不要添加新的语言切换按钮，保持原有的
 
 # 从 secrets 读取永久 API 配置
 try:
