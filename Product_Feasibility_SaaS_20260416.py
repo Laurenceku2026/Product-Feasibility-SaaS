@@ -10,6 +10,11 @@ else:
     st.warning("请从 TechLife Portal 登录后访问")
     st.stop()
 
+# 在子应用开头添加
+query_params = st.query_params
+if "lang" in query_params:
+    st.session_state.lang = query_params["lang"]
+#================================================================
 import streamlit as st
 import openai
 import json
