@@ -20,18 +20,22 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================== 🆕 新增：接收门户参数和计数功能 ==================
+# ================== 🆕 接收门户参数和计数功能 ==================
 # 获取 URL 参数
 query_params = st.query_params
 
 if "user_id" in query_params:
     st.session_state.user_id = query_params["user_id"]
     st.session_state.user_email = query_params.get("email", [""])[0]
-    # 设置语言
+    # 设置语言（从 URL 获取）
     if "lang" in query_params:
-        st.session_state.lang = query_params["lang"] if query_params["lang"] in ["zh", "en"] else "zh"
+        lang_param = query_params["lang"]
+        st.session_state.lang = lang_param if lang_param in ["zh", "en"] else "zh"
     else:
         st.session_state.lang = "zh"
+    # 获取剩余次数
+    if "trials_left" in query_params:
+        st.session_state.trials_left = int(query_params["trials_left"])
 else:
     st.warning("请从 TechLife Suite 门户登录后访问")
     st.stop()
@@ -45,6 +49,24 @@ def init_supabase():
         return None
 
 supabase = init_supabase()
+
+# 🆕 获取用户剩余次数（从数据库）
+def get_user_remaining_trials(user_id: str) -> int:
+    if not supabase:
+        return st.session_state.get("trials_left", 30)
+    try:
+        response = supabase.table("profiles")\
+            .select("free_trials_remaining, subscription_tier")\
+            .eq("id", user_id)\
+            .execute()
+        if response.data:
+            profile = response.data[0]
+            if profile.get("subscription_tier") == "pro":
+                return -1  # -1 表示无限
+            return profile.get("free_trials_remaining", 30)
+    except Exception:
+        pass
+    return st.session_state.get("trials_left", 30)
 
 # 🆕 消耗免费次数函数
 def consume_trial(user_id: str, app_name: str) -> tuple:
@@ -86,6 +108,36 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
         
     except Exception as e:
         return False, 0, f"计数失败: {str(e)}"
+
+# ================== 侧边栏显示用户信息和剩余次数 ==================
+with st.sidebar:
+    # 显示用户信息
+    st.success(f"👤 用户: {st.session_state.user_email}")
+    
+    # 显示剩余次数
+    remaining = get_user_remaining_trials(st.session_state.user_id)
+    if remaining == -1:
+        st.info("🎫 剩余免费次数: ∞ (专业版)")
+    else:
+        st.info(f"🎫 剩余免费次数: {remaining}")
+    
+    # 显示语言（可选）
+    lang_display = "中文" if st.session_state.lang == "zh" else "English"
+    st.caption(f"🌐 当前语言: {lang_display}")
+    
+    st.markdown("---")
+
+# ================== 语言切换按钮 ==================
+# 在右上角添加语言切换
+col1, col2, col3 = st.columns([8, 1, 1])
+with col2:
+    if st.button("中文", key="zh_btn"):
+        st.session_state.lang = "zh"
+        st.rerun()
+with col3:
+    if st.button("English", key="en_btn"):
+        st.session_state.lang = "en"
+        st.rerun()
 
 # ================== 原有代码开始 ==================
 # 管理员凭证
