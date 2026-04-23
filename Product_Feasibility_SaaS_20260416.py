@@ -11,7 +11,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from datetime import datetime
 from openai import OpenAI
-from supabase import create_client  # 🆕 新增
+from supabase import create_client
 
 # ================== 页面配置 ==================
 st.set_page_config(
@@ -20,27 +20,23 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================== 🆕 接收门户参数和计数功能 ==================
-# 获取 URL 参数
+# ================== 接收门户参数 ==================
 query_params = st.query_params
 
 if "user_id" in query_params:
     st.session_state.user_id = query_params["user_id"]
     st.session_state.user_email = query_params.get("email", [""])[0]
-    # 设置语言（从 URL 获取）
     if "lang" in query_params:
-        lang_param = query_params["lang"]
-        st.session_state.lang = lang_param if lang_param in ["zh", "en"] else "zh"
+        st.session_state.lang = query_params["lang"] if query_params["lang"] in ["zh", "en"] else "zh"
     else:
         st.session_state.lang = "zh"
-    # 获取剩余次数
     if "trials_left" in query_params:
         st.session_state.trials_left = int(query_params["trials_left"])
 else:
     st.warning("请从 TechLife Suite 门户登录后访问")
     st.stop()
 
-# 🆕 Supabase 初始化（用于计数）
+# ================== Supabase 初始化 ==================
 @st.cache_resource
 def init_supabase():
     try:
@@ -50,7 +46,6 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# 🆕 获取用户剩余次数（从数据库）
 def get_user_remaining_trials(user_id: str) -> int:
     if not supabase:
         return st.session_state.get("trials_left", 30)
@@ -62,85 +57,67 @@ def get_user_remaining_trials(user_id: str) -> int:
         if response.data:
             profile = response.data[0]
             if profile.get("subscription_tier") == "pro":
-                return -1  # -1 表示无限
+                return -1
             return profile.get("free_trials_remaining", 30)
     except Exception:
         pass
     return st.session_state.get("trials_left", 30)
 
-# 🆕 消耗免费次数函数
 def consume_trial(user_id: str, app_name: str) -> tuple:
-    """消耗一次免费次数，返回 (是否成功, 剩余次数, 错误信息)"""
     if not supabase:
         return True, -1, ""
-    
     try:
         response = supabase.table("profiles")\
             .select("free_trials_remaining, subscription_tier")\
             .eq("id", user_id)\
             .execute()
-        
         if not response.data:
             return False, 0, "用户不存在"
-        
         profile = response.data[0]
         tier = profile.get("subscription_tier", "free")
         remaining = profile.get("free_trials_remaining", 30)
-        
         if tier == "pro":
             return True, -1, ""
-        
         if remaining <= 0:
             return False, 0, "免费次数已用完（共30次），请联系管理员升级"
-        
         supabase.table("profiles").update({
             "free_trials_remaining": remaining - 1
         }).eq("id", user_id).execute()
-        
         supabase.table("usage_logs").insert({
             "user_id": user_id,
             "app_name": app_name,
             "analysis_count": 1,
             "used_at": datetime.now().isoformat()
         }).execute()
-        
         return True, remaining - 1, ""
-        
     except Exception as e:
         return False, 0, f"计数失败: {str(e)}"
 
-# ================== 侧边栏显示用户信息和剩余次数 ==================
+# ================== 侧边栏（显示用户信息和剩余次数） ==================
 with st.sidebar:
-    # 显示用户信息
-    st.success(f"👤 用户: {st.session_state.user_email}")
-    
-    # 显示剩余次数
+    st.markdown("### 👤 用户信息")
+    st.markdown(f"**{st.session_state.user_email}**")
     remaining = get_user_remaining_trials(st.session_state.user_id)
     if remaining == -1:
         st.info("🎫 剩余免费次数: ∞ (专业版)")
     else:
         st.info(f"🎫 剩余免费次数: {remaining}")
-    
-    # 显示语言（可选）
     lang_display = "中文" if st.session_state.lang == "zh" else "English"
-    st.caption(f"🌐 当前语言: {lang_display}")
-    
+    st.caption(f"🌐 语言: {lang_display}")
     st.markdown("---")
 
-# ================== 语言切换按钮 ==================
-# 在右上角添加语言切换
+# ================== 语言切换按钮（使用不同的 key）==================
 col1, col2, col3 = st.columns([8, 1, 1])
 with col2:
-    if st.button("中文", key="zh_btn"):
+    if st.button("中文", key="subapp_zh_btn"):
         st.session_state.lang = "zh"
         st.rerun()
 with col3:
-    if st.button("English", key="en_btn"):
+    if st.button("English", key="subapp_en_btn"):
         st.session_state.lang = "en"
         st.rerun()
 
-# ================== 原有代码开始 ==================
-# 管理员凭证
+# ================== 管理员凭证 ==================
 ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
 
@@ -171,6 +148,8 @@ if "ai_base_url" not in st.session_state:
     st.session_state.ai_base_url = PERSISTENT_BASE_URL
 if "ai_model_name" not in st.session_state:
     st.session_state.ai_model_name = PERSISTENT_MODEL_NAME
+
+# ... 以下是原有代码（保持不变）...
 
 # ================== Word 表格生成 ==================
 def set_cell_border(cell, border_color=RGBColor(0xCC, 0xCC, 0xCC)):
