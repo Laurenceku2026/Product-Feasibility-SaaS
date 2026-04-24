@@ -24,9 +24,6 @@ st.set_page_config(
 # ================== 接收门户参数 ==================
 query_params = st.query_params
 
-# 调试：打印所有参数
-st.write("🔍 调试: 所有参数 =", dict(query_params))
-
 if "user_id" in query_params:
     # 注意：query_params["user_id"] 可能返回列表，需要取第一个
     user_id_val = query_params["user_id"]
@@ -41,11 +38,7 @@ if "user_id" in query_params:
         st.session_state.user_email = email_val[0] if email_val else ""
     else:
         st.session_state.user_email = email_val
-    
-    # 调试：打印获取到的值
-    st.write(f"🔍 调试: user_id = {st.session_state.user_id}")
-    st.write(f"🔍 调试: user_email = {st.session_state.user_email}")
-    
+           
     # 从邮箱提取用户名
     if st.session_state.user_email and "@" in st.session_state.user_email:
         st.session_state.username = st.session_state.user_email.split('@')[0]
@@ -73,7 +66,6 @@ else:
 # ================== 🆕 Supabase 配置 ==================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
-st.write(f"🔍 使用的 KEY 前缀: {SUPABASE_KEY[:20]}...")
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -97,20 +89,13 @@ def supabase_patch(table: str, user_id: str, data: dict):
 
 def supabase_post(table: str, data: dict):
     """POST 请求"""
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
-    st.write(f"🔍 POST URL: {url}")
-    st.write(f"🔍 POST DATA: {data}")
-    response = requests.post(url, headers=HEADERS, json=data)
-    st.write(f"🔍 POST 状态码: {response.status_code}")
-    st.write(f"🔍 POST 响应: {response.text}")
+    url = f"{SUPABASE_URL}/rest/v1/{table}"    
+    response = requests.post(url, headers=HEADERS, json=data)    
     return response
 def get_user_remaining_trials(user_id: str) -> int:
     """获取用户剩余次数"""
     try:
-        response = supabase_get("profiles", user_id)
-        # 👇 在这里添加调试代码
-        st.write(f"🔍 状态码: {response.status_code}")
-        st.write(f"🔍 响应内容: {response.text}")        
+        response = supabase_get("profiles", user_id)                
         if response.status_code == 200 and response.json():
             return response.json()[0].get("free_trials_remaining", 30)
     except Exception:
