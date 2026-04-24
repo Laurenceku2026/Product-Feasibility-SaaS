@@ -24,26 +24,52 @@ st.set_page_config(
 # ================== 接收门户参数 ==================
 query_params = st.query_params
 
+# 调试：打印所有参数
+st.write("🔍 调试: 所有参数 =", dict(query_params))
+
 if "user_id" in query_params:
-    st.session_state.user_id = query_params["user_id"]
-    st.session_state.user_email = query_params.get("email", [""])[0]
+    # 注意：query_params["user_id"] 可能返回列表，需要取第一个
+    user_id_val = query_params["user_id"]
+    if isinstance(user_id_val, list):
+        st.session_state.user_id = user_id_val[0]
+    else:
+        st.session_state.user_id = user_id_val
+    
+    # 获取 email
+    email_val = query_params.get("email", "")
+    if isinstance(email_val, list):
+        st.session_state.user_email = email_val[0] if email_val else ""
+    else:
+        st.session_state.user_email = email_val
+    
+    # 调试：打印获取到的值
+    st.write(f"🔍 调试: user_id = {st.session_state.user_id}")
+    st.write(f"🔍 调试: user_email = {st.session_state.user_email}")
+    
     # 从邮箱提取用户名
     if st.session_state.user_email and "@" in st.session_state.user_email:
         st.session_state.username = st.session_state.user_email.split('@')[0]
     else:
         st.session_state.username = "User"
+    
     # 设置语言
     if "lang" in query_params:
-        st.session_state.lang = query_params["lang"] if query_params["lang"] in ["zh", "en"] else "zh"
+        lang_val = query_params["lang"]
+        if isinstance(lang_val, list):
+            lang_val = lang_val[0]
+        st.session_state.lang = lang_val if lang_val in ["zh", "en"] else "zh"
     else:
         st.session_state.lang = "zh"
-    # 接收剩余次数（用于显示）
+    
+    # 接收剩余次数
     if "trials_left" in query_params:
-        st.session_state.trials_left = int(query_params["trials_left"])
+        trials_val = query_params["trials_left"]
+        if isinstance(trials_val, list):
+            trials_val = trials_val[0]
+        st.session_state.trials_left = int(trials_val)
 else:
     st.warning("请从 TechLife Suite 门户登录后访问")
     st.stop()
-
 # ================== 🆕 Supabase 配置 ==================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
