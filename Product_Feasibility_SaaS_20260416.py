@@ -73,6 +73,7 @@ else:
 # ================== 🆕 Supabase 配置 ==================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+st.write(f"🔍 使用的 KEY 前缀: {SUPABASE_KEY[:20]}...")
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
