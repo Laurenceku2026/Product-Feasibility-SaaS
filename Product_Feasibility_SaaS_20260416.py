@@ -98,9 +98,12 @@ def supabase_patch(table: str, user_id: str, data: dict):
 def supabase_post(table: str, data: dict):
     """POST 请求"""
     url = f"{SUPABASE_URL}/rest/v1/{table}"
+    st.write(f"🔍 POST URL: {url}")
+    st.write(f"🔍 POST DATA: {data}")
     response = requests.post(url, headers=HEADERS, json=data)
+    st.write(f"🔍 POST 状态码: {response.status_code}")
+    st.write(f"🔍 POST 响应: {response.text}")
     return response
-
 def get_user_remaining_trials(user_id: str) -> int:
     """获取用户剩余次数"""
     try:
