@@ -134,6 +134,11 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
         
         # 更新剩余次数
         patch_resp = supabase_patch("profiles", user_id, {"free_trials_remaining": current - 1})
+        
+        # 调试信息
+        st.error(f"🔍 PATCH 状态码: {patch_resp.status_code}")
+        st.error(f"🔍 PATCH 响应内容: {patch_resp.text}")
+        
         if patch_resp.status_code != 200:
             return False, 0, f"更新失败: {patch_resp.text}"
         
@@ -149,7 +154,6 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
         
     except Exception as e:
         return False, 0, f"计数失败: {str(e)}"
-
 # ================== 侧边栏（显示用户信息和剩余次数）==================
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.username}")
