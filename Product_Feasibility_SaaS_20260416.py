@@ -72,7 +72,7 @@ else:
     st.stop()
 # ================== 🆕 Supabase 配置 ==================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
