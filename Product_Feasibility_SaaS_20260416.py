@@ -104,6 +104,9 @@ def get_user_remaining_trials(user_id: str) -> int:
     """获取用户剩余次数"""
     try:
         response = supabase_get("profiles", user_id)
+        # 👇 在这里添加调试代码
+        st.write(f"🔍 状态码: {response.status_code}")
+        st.write(f"🔍 响应内容: {response.text}")        
         if response.status_code == 200 and response.json():
             return response.json()[0].get("free_trials_remaining", 30)
     except Exception:
