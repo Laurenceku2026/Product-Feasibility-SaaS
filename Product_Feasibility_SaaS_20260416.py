@@ -4,6 +4,7 @@ import json
 import os
 import re
 import pandas as pd
+import requests
 from io import BytesIO
 from docx import Document
 from docx.shared import Inches, RGBColor
@@ -11,7 +12,6 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from datetime import datetime
 from openai import OpenAI
-from supabase import create_client
 
 # ================== 页面配置 ==================
 st.set_page_config(
@@ -20,84 +20,106 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================== 接收门户参数 ==================
+# ================== 🆕 接收门户参数 ==================
 query_params = st.query_params
 
 if "user_id" in query_params:
     st.session_state.user_id = query_params["user_id"]
     st.session_state.user_email = query_params.get("email", [""])[0]
-    # 从邮箱提取用户名（修复：取@前面的完整部分）
+    # 从邮箱提取用户名
     if st.session_state.user_email and "@" in st.session_state.user_email:
         st.session_state.username = st.session_state.user_email.split('@')[0]
     else:
         st.session_state.username = "User"
-    # 设置语言（从门户传递）
+    # 设置语言
     if "lang" in query_params:
         st.session_state.lang = query_params["lang"] if query_params["lang"] in ["zh", "en"] else "zh"
     else:
         st.session_state.lang = "zh"
+    # 接收剩余次数（用于显示）
+    if "trials_left" in query_params:
+        st.session_state.trials_left = int(query_params["trials_left"])
 else:
     st.warning("请从 TechLife Suite 门户登录后访问")
     st.stop()
 
-# ================== Supabase 初始化 ==================
-@st.cache_resource
-def init_supabase():
-    try:
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception:
-        return None
+# ================== 🆕 Supabase 配置 ==================
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-supabase = init_supabase()
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json"
+}
+
+def supabase_get(table: str, user_id: str = None):
+    """GET 请求"""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if user_id:
+        url += f"?id=eq.{user_id}"
+    response = requests.get(url, headers=HEADERS)
+    return response
+
+def supabase_patch(table: str, user_id: str, data: dict):
+    """PATCH 请求（更新）"""
+    url = f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{user_id}"
+    response = requests.patch(url, headers=HEADERS, json=data)
+    return response
+
+def supabase_post(table: str, data: dict):
+    """POST 请求"""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    response = requests.post(url, headers=HEADERS, json=data)
+    return response
 
 def get_user_remaining_trials(user_id: str) -> int:
-    if not supabase:
-        return 30
+    """获取用户剩余次数"""
     try:
-        response = supabase.table("profiles")\
-            .select("free_trials_remaining, subscription_tier")\
-            .eq("id", user_id)\
-            .execute()
-        if response.data:
-            profile = response.data[0]
-            if profile.get("subscription_tier") == "pro":
-                return -1
-            return profile.get("free_trials_remaining", 30)
+        response = supabase_get("profiles", user_id)
+        if response.status_code == 200 and response.json():
+            return response.json()[0].get("free_trials_remaining", 30)
     except Exception:
         pass
-    return 30
+    return st.session_state.get("trials_left", 30)
 
 def consume_trial(user_id: str, app_name: str) -> tuple:
-    if not supabase:
-        return True, -1, ""
+    """消耗一次免费次数，返回 (是否成功, 剩余次数, 错误信息)"""
     try:
-        response = supabase.table("profiles")\
-            .select("free_trials_remaining, subscription_tier")\
-            .eq("id", user_id)\
-            .execute()
-        if not response.data:
+        # 获取当前剩余次数
+        resp = supabase_get("profiles", user_id)
+        if resp.status_code != 200 or not resp.json():
             return False, 0, "用户不存在"
-        profile = response.data[0]
-        tier = profile.get("subscription_tier", "free")
-        remaining = profile.get("free_trials_remaining", 30)
+        
+        current = resp.json()[0].get("free_trials_remaining", 30)
+        tier = resp.json()[0].get("subscription_tier", "free")
+        
+        # 专业版无限使用
         if tier == "pro":
             return True, -1, ""
-        if remaining <= 0:
+        
+        if current <= 0:
             return False, 0, "免费次数已用完（共30次），请联系管理员升级"
-        supabase.table("profiles").update({
-            "free_trials_remaining": remaining - 1
-        }).eq("id", user_id).execute()
-        supabase.table("usage_logs").insert({
+        
+        # 更新剩余次数
+        patch_resp = supabase_patch("profiles", user_id, {"free_trials_remaining": current - 1})
+        if patch_resp.status_code != 200:
+            return False, 0, f"更新失败: {patch_resp.text}"
+        
+        # 记录使用日志
+        supabase_post("usage_logs", {
             "user_id": user_id,
             "app_name": app_name,
             "analysis_count": 1,
             "used_at": datetime.now().isoformat()
-        }).execute()
-        return True, remaining - 1, ""
+        })
+        
+        return True, current - 1, ""
+        
     except Exception as e:
         return False, 0, f"计数失败: {str(e)}"
 
-# ================== 侧边栏（显示用户信息和剩余次数） ==================
+# ================== 侧边栏（显示用户信息和剩余次数）==================
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.username}")
     remaining = get_user_remaining_trials(st.session_state.user_id)
@@ -106,17 +128,16 @@ with st.sidebar:
     else:
         st.info(f"🎫 剩余免费次数: {remaining}")
     st.markdown("---")
-    # 这里是原有的侧边栏内容
-    # ... 保留原有代码 ...
+    
+    # 原有的侧边栏内容继续
+    # ================== 原有代码继续 ==================
+    # 以下保持原有代码不变，只是缩进调整
 
 # ================== 管理员凭证 ==================
 ADMIN_USERNAME = "Laurence_ku"
 ADMIN_PASSWORD = "Ku_product$2026"
 
-# ... 以下保持原有代码不变 ...
-# 注意：不要添加新的语言切换按钮，保持原有的
-
-# 从 secrets 读取永久 API 配置
+# ================== 从 secrets 读取永久 API 配置 ==================
 try:
     PERSISTENT_API_KEY = st.secrets["AI_API_KEY"]
 except:
@@ -130,7 +151,7 @@ try:
 except:
     PERSISTENT_MODEL_NAME = "deepseek-coder"
 
-# 初始化 session state
+# ================== 初始化 session state ==================
 if "report_content_zh" not in st.session_state:
     st.session_state.report_content_zh = None
 if "report_content_en" not in st.session_state:
@@ -144,9 +165,7 @@ if "ai_base_url" not in st.session_state:
 if "ai_model_name" not in st.session_state:
     st.session_state.ai_model_name = PERSISTENT_MODEL_NAME
 
-# ... 以下是原有代码（保持不变）...
-
-# ================== Word 表格生成 ==================
+# ================== Word 表格生成（浅灰边框） ==================
 def set_cell_border(cell, border_color=RGBColor(0xCC, 0xCC, 0xCC)):
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
@@ -658,7 +677,9 @@ t = TEXTS[lang]
 
 st.title(t["title"])
 
-# ================== 侧边栏 ==================
+# ================== 侧边栏（原有内容 - 注意不要重复）==================
+# 注意：因为已经在前面添加了用户信息侧边栏，这里只添加原有的分析系统内容
+# 为了避免重复，只添加下面这些
 with st.sidebar:
     st.markdown(f"## {t['sidebar_title']}")
     st.markdown(t["sidebar_basis"])
