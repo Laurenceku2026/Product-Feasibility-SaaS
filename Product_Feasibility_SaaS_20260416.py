@@ -21,6 +21,7 @@ st.set_page_config(
 )
 
 # ================== 🆕 接收门户参数 ==================
+# ================== 接收门户参数 ==================
 query_params = st.query_params
 
 if "user_id" in query_params:
