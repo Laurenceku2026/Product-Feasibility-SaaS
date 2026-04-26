@@ -149,10 +149,17 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.username}")
     remaining = get_user_remaining_trials(st.session_state.user_id)
+    lang = st.session_state.lang
     if remaining == -1:
-        st.info("🎫 剩余免费次数: ∞ (专业版)")
+        if lang == "zh":
+            st.info("🎫 剩余免费次数: ∞ (专业版)")
+        else:
+            st.info("🎫 Remaining Trials: ∞ (Pro)")
     else:
-        st.info(f"🎫 剩余免费次数: {remaining}")
+        if lang == "zh":
+            st.info(f"🎫 剩余免费次数: {remaining}")
+        else:
+            st.info(f"🎫 Remaining Trials: {remaining}")
     st.markdown("---")
 
 # ================== 管理员凭证 ==================
