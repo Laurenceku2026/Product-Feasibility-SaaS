@@ -20,12 +20,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================== 🆕 接收门户参数 ==================
 # ================== 接收门户参数 ==================
 query_params = st.query_params
 
 if "user_id" in query_params:
-    # 注意：query_params["user_id"] 可能返回列表，需要取第一个
+    # 获取 user_id
     user_id_val = query_params["user_id"]
     if isinstance(user_id_val, list):
         st.session_state.user_id = user_id_val[0]
@@ -38,7 +37,7 @@ if "user_id" in query_params:
         st.session_state.user_email = email_val[0] if email_val else ""
     else:
         st.session_state.user_email = email_val
-           
+    
     # 从邮箱提取用户名
     if st.session_state.user_email and "@" in st.session_state.user_email:
         st.session_state.username = st.session_state.user_email.split('@')[0]
@@ -54,7 +53,7 @@ if "user_id" in query_params:
     else:
         st.session_state.lang = "zh"
     
-    # 接收剩余次数
+    # 接收剩余次数（仅用于初始显示）
     if "trials_left" in query_params:
         trials_val = query_params["trials_left"]
         if isinstance(trials_val, list):
@@ -63,7 +62,8 @@ if "user_id" in query_params:
 else:
     st.warning("请从 TechLife Suite 门户登录后访问")
     st.stop()
-# ================== 🆕 Supabase 配置 ==================
+
+# ================== Supabase 配置 ==================
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
 
@@ -89,15 +89,21 @@ def supabase_patch(table: str, user_id: str, data: dict):
 
 def supabase_post(table: str, data: dict):
     """POST 请求"""
-    url = f"{SUPABASE_URL}/rest/v1/{table}"    
-    response = requests.post(url, headers=HEADERS, json=data)    
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    response = requests.post(url, headers=HEADERS, json=data)
     return response
+
 def get_user_remaining_trials(user_id: str) -> int:
-    """获取用户剩余次数"""
+    """从数据库实时获取剩余次数"""
     try:
-        response = supabase_get("profiles", user_id)                
+        response = supabase_get("profiles", user_id)
         if response.status_code == 200 and response.json():
-            return response.json()[0].get("free_trials_remaining", 30)
+            remaining = response.json()[0].get("free_trials_remaining", 30)
+            # 同时获取订阅类型
+            tier = response.json()[0].get("subscription_tier", "free")
+            if tier == "pro":
+                return -1  # -1 表示无限
+            return remaining
     except Exception:
         pass
     return st.session_state.get("trials_left", 30)
@@ -123,7 +129,6 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
         # 更新剩余次数
         patch_resp = supabase_patch("profiles", user_id, {"free_trials_remaining": current - 1})
         
-        # 204 和 200 都是成功状态码
         if patch_resp.status_code not in [200, 204]:
             return False, 0, f"更新失败: {patch_resp.text}"
         
@@ -139,7 +144,8 @@ def consume_trial(user_id: str, app_name: str) -> tuple:
         
     except Exception as e:
         return False, 0, f"计数失败: {str(e)}"
-# ================== 侧边栏（显示用户信息和剩余次数）==================
+
+# ================== 侧边栏（显示用户信息和实时剩余次数）==================
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.username}")
     remaining = get_user_remaining_trials(st.session_state.user_id)
@@ -148,10 +154,6 @@ with st.sidebar:
     else:
         st.info(f"🎫 剩余免费次数: {remaining}")
     st.markdown("---")
-    
-    # 原有的侧边栏内容继续
-    # ================== 原有代码继续 ==================
-    # 以下保持原有代码不变，只是缩进调整
 
 # ================== 管理员凭证 ==================
 ADMIN_USERNAME = "Laurence_ku"
@@ -185,7 +187,7 @@ if "ai_base_url" not in st.session_state:
 if "ai_model_name" not in st.session_state:
     st.session_state.ai_model_name = PERSISTENT_MODEL_NAME
 
-# ================== Word 表格生成（浅灰边框） ==================
+# ================== Word 表格生成 ==================
 def set_cell_border(cell, border_color=RGBColor(0xCC, 0xCC, 0xCC)):
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
@@ -697,9 +699,7 @@ t = TEXTS[lang]
 
 st.title(t["title"])
 
-# ================== 侧边栏（原有内容 - 注意不要重复）==================
-# 注意：因为已经在前面添加了用户信息侧边栏，这里只添加原有的分析系统内容
-# 为了避免重复，只添加下面这些
+# ================== 侧边栏（原有内容）==================
 with st.sidebar:
     st.markdown(f"## {t['sidebar_title']}")
     st.markdown(t["sidebar_basis"])
@@ -787,14 +787,14 @@ with col_btn2:
     submitted = st.button(t["submit_btn"], type="primary", use_container_width=True)
 spinner_placeholder = st.empty()
 
-# ================== 报告生成逻辑（🆕 添加计数）==================
+# ================== 报告生成逻辑（添加计数）==================
 if submitted:
     if not product_name:
         st.error(t["product_name_missing"])
     elif not st.session_state.ai_api_key:
         st.error(t["api_key_missing"])
     else:
-        # 🆕 消耗免费次数
+        # 消耗免费次数
         allowed, new_remaining, error_msg = consume_trial(st.session_state.user_id, "feasibility")
         if not allowed:
             st.error(error_msg)
